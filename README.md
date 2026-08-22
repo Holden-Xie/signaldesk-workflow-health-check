@@ -1,5 +1,7 @@
 # SignalDesk Current Usefulness Brief
 
+[![tests](https://github.com/Holden-Xie/signaldesk-workflow-health-check/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/Holden-Xie/signaldesk-workflow-health-check/actions/workflows/tests.yml)
+
 ## Track Chosen
 
 Track A — Fictional Domain Packet.
