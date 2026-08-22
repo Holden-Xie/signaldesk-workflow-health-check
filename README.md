@@ -6,7 +6,11 @@ Track A — Fictional Domain Packet.
 
 ## What I Built
 
-A standard-library Python CLI focused on one decision: **Which workflow seems most useful right now?** It validates the messy export, selects the stable August 4–6 window, and compares workflows through three primary lenses: accepted outputs per day, acceptance rate, and review burden. Directional minutes saved is supporting context. It recommends Lead summary tentatively because it leads two lenses; Reply draft leads throughput. No opaque score is used.
+A standard-library Python CLI focused on one decision: **Which workflow seems most useful right now?** It validates the messy export, selects the stable August 4–6 window, and compares accepted outputs per day, acceptance rate, and review burden. Directional minutes saved is supporting context; no opaque score is used.
+
+## Decision
+
+**Lead summary is the tentative best-balanced candidate.** It leads acceptance and review burden; Reply draft leads throughput and would be the choice if scale were the only objective. This is a prioritization signal, not a causal ROI claim.
 
 ## Who It Is For
 
@@ -14,7 +18,7 @@ A SignalDesk product manager choosing which workflow to prioritize for continued
 
 ## Data Or Source Used
 
-The challenge's fictional `product_usage_events.csv` (41 daily aggregate rows, August 1–7, 2026). The included copy is unchanged.
+The challenge's fictional [`product_usage_events.csv`](https://github.com/vyuan2037/ds-intern-challenge/blob/main/sample-data/product_usage_events.csv) (41 daily aggregate rows, August 1–7, 2026). The included copy is unchanged.
 
 ## Run It
 

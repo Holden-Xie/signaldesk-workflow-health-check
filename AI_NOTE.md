@@ -2,16 +2,16 @@
 
 ## Did You Use AI?
 
-Yes. I used Codex for repository research, requirement decomposition, implementation support, test design, and documentation review.
+Yes. I used Codex extensively for repository research, data inspection, implementation, test design, and documentation.
 
 ## How You Used It
 
-AI helped inspect every challenge file and the full dataset, identify likely data-quality traps, research authoritative AI-monitoring practices, draft a deliberately small CLI design, and propose edge-case tests.
+AI helped inspect every challenge file and the full dataset, identify data-quality traps, calculate candidate metrics, write the CLI, and propose edge-case tests. I iteratively redirected it as the decision question became clearer.
 
 ## One Helpful Workflow
 
-I asked AI to calculate the current-window metrics independently, then required the implementation to reproduce the totals and expose each decision lens. That converted “most useful” from a vague ranking into a testable product judgment without a hidden score.
+The first analysis was too broad. I narrowed it to “Which workflow seems most useful right now?”, challenged whether the result was actually conclusive, and raised day-of-week as a possible confounder. AI then rebuilt the analysis around a shared Tuesday–Thursday window and exposed each decision lens instead of hiding the judgment in a composite score.
 
 ## What I Verified Or Decided Myself
 
-I independently defined usefulness as adoption, accepted-output throughput, review burden, and directional time impact. I verified the source row count, current-window totals, rate denominators, duplicate exclusions, source coverage, lens winners, and incident-day separation through executable tests. I also decided that confidence and rating must not affect the recommendation.
+I decided that the answer should be tentative, that throughput alone could favor Reply draft, and that confidence and rating should not drive the recommendation. I required assumptions and limitations to be explicit. Important totals, denominators, exclusions, coverage, lens winners, and incident-day separation were independently reconciled and encoded in tests rather than accepted from a single AI calculation.
