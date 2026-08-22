@@ -1,4 +1,4 @@
-"""Generate a compact, auditable SignalDesk workflow health report.
+"""Answer which SignalDesk workflow seems most useful right now.
 
 The implementation intentionally uses only Python's standard library so the
 challenge artifact is easy to run in a clean environment.
@@ -83,8 +83,34 @@ class Metrics:
     acceptance_rate: float
     review_rate: float
     avg_minutes_saved: float | None
+    estimated_total_minutes: float
     median_confidence: float | None
     mean_row_rating: float | None
+
+
+@dataclass(frozen=True)
+class UsefulnessScorecard:
+    workflow: str
+    metrics: Metrics
+    window_days: int
+    observed_segment_days: int
+    expected_segment_days: int
+    accepted_per_day: float
+    estimated_minutes_per_day: float
+
+    @property
+    def coverage_rate(self) -> float:
+        if not self.expected_segment_days:
+            return 0.0
+        return self.observed_segment_days / self.expected_segment_days
+
+
+@dataclass(frozen=True)
+class UsefulnessDecision:
+    winner: str | None
+    confidence: str
+    lens_winners: dict[str, str]
+    win_counts: dict[str, int]
 
 
 @dataclass
@@ -93,8 +119,10 @@ class HealthCheck:
     issues: list[Issue]
     prompt_change_date: date
     incident_dates: set[date]
-    baseline: dict[str, Metrics]
-    post_prompt: dict[str, Metrics]
+    current_start: date
+    current_end: date
+    scorecards: dict[str, UsefulnessScorecard]
+    decision: UsefulnessDecision
     incident_records: list[Record]
 
 
@@ -299,6 +327,10 @@ def aggregate(records: Iterable[Record]) -> Metrics:
         if minutes_denominator
         else None
     )
+    estimated_total_minutes = sum(
+        (record.avg_minutes_saved or 0) * (record.completed or 0)
+        for record in weighted_minutes_rows
+    )
     confidence_rows = [record for record in selected if record.median_confidence is not None and record.completed]
     confidence_denominator = sum(record.completed or 0 for record in confidence_rows)
     weighted_confidence = (
@@ -318,25 +350,53 @@ def aggregate(records: Iterable[Record]) -> Metrics:
         acceptance_rate=ratio(accepted, completed),
         review_rate=ratio(flagged, completed),
         avg_minutes_saved=weighted_minutes,
+        estimated_total_minutes=estimated_total_minutes,
         median_confidence=weighted_confidence,
         mean_row_rating=statistics.fmean(ratings) if ratings else None,
     )
 
 
-def classify_evidence(baseline: Metrics, post: Metrics) -> str:
-    """Return a transparent evidence label; confidence is deliberately unused."""
-    if min(baseline.completed, post.completed) < 50:
-        return "LOW SAMPLE"
-    deltas = (
-        post.completion_rate - baseline.completion_rate,
-        post.acceptance_rate - baseline.acceptance_rate,
-        post.review_rate - baseline.review_rate,
+def build_scorecards(
+    records: list[Record],
+    window_dates: list[date],
+    expected_sources: dict[str, set[str]],
+) -> dict[str, UsefulnessScorecard]:
+    """Create comparable workflow summaries for the same current window."""
+    scorecards: dict[str, UsefulnessScorecard] = {}
+    for workflow in sorted({record.workflow for record in records}):
+        workflow_records = [record for record in records if record.workflow == workflow]
+        metrics = aggregate(workflow_records)
+        days = len(window_dates)
+        scorecards[workflow] = UsefulnessScorecard(
+            workflow=workflow,
+            metrics=metrics,
+            window_days=days,
+            observed_segment_days=len(workflow_records),
+            expected_segment_days=days * len(expected_sources.get(workflow, set())),
+            accepted_per_day=metrics.accepted / days,
+            estimated_minutes_per_day=metrics.estimated_total_minutes / days,
+        )
+    return scorecards
+
+
+def choose_most_useful(scorecards: dict[str, UsefulnessScorecard]) -> UsefulnessDecision:
+    """Choose a best-balanced candidate by three human-facing lenses."""
+    if not scorecards:
+        raise ValueError("No workflows are available for a usefulness decision.")
+    lens_winners = {
+        "accepted outputs per day": max(scorecards, key=lambda name: scorecards[name].accepted_per_day),
+        "acceptance rate": max(scorecards, key=lambda name: scorecards[name].metrics.acceptance_rate),
+        "lowest review burden": min(scorecards, key=lambda name: scorecards[name].metrics.review_rate),
+    }
+    win_counts = Counter(lens_winners.values())
+    highest = max(win_counts.values())
+    leaders = sorted(workflow for workflow, count in win_counts.items() if count == highest)
+    return UsefulnessDecision(
+        winner=leaders[0] if len(leaders) == 1 else None,
+        confidence="TENTATIVE",
+        lens_winners=lens_winners,
+        win_counts=dict(win_counts),
     )
-    if any(abs(delta) >= 0.10 for delta in deltas):
-        return "NEEDS INVESTIGATION"
-    if deltas[1] >= 0.02 and deltas[2] <= -0.02 and deltas[0] >= 0:
-        return "DIRECTIONALLY POSITIVE"
-    return "INCONCLUSIVE"
 
 
 def build_health_check(path: str | Path) -> HealthCheck:
@@ -357,29 +417,42 @@ def build_health_check(path: str | Path) -> HealthCheck:
     }
 
     eligible = [record for record in records if record.analysis_eligible]
-    baseline_records = [record for record in eligible if record.observed_on < prompt_change_date]
-    post_records = [
-        record
-        for record in eligible
-        if record.observed_on >= prompt_change_date and record.observed_on not in incident_dates
-    ]
-    workflows = sorted({record.workflow for record in baseline_records} & {record.workflow for record in post_records})
-    baseline = {workflow: aggregate(record for record in baseline_records if record.workflow == workflow) for workflow in workflows}
-    post_prompt = {workflow: aggregate(record for record in post_records if record.workflow == workflow) for workflow in workflows}
+    stable_dates = sorted(
+        {
+            record.observed_on
+            for record in eligible
+            if record.observed_on >= prompt_change_date and record.observed_on not in incident_dates
+        }
+    )
+    if not stable_dates:
+        raise ValueError("No stable post-change dates are available for the current usefulness window.")
+    current_start, current_end = stable_dates[0], stable_dates[-1]
+    current_records = [record for record in eligible if record.observed_on in stable_dates]
+    expected_sources: dict[str, set[str]] = defaultdict(set)
+    for record in records:
+        expected_sources[record.workflow].add(record.source)
+    scorecards = build_scorecards(current_records, stable_dates, expected_sources)
+    decision = choose_most_useful(scorecards)
     incident_records = [
         record
         for record in eligible
         if record.observed_on in incident_dates and "changed mid-day" in record.notes.casefold()
     ]
-    return HealthCheck(records, issues, prompt_change_date, incident_dates, baseline, post_prompt, incident_records)
+    return HealthCheck(
+        records,
+        issues,
+        prompt_change_date,
+        incident_dates,
+        current_start,
+        current_end,
+        scorecards,
+        decision,
+        incident_records,
+    )
 
 
 def _pct(value: float) -> str:
     return f"{value * 100:.1f}%"
-
-
-def _pp(value: float) -> str:
-    return f"{value * 100:+.1f} pp"
 
 
 def render_report(check: HealthCheck, source_name: str) -> str:
@@ -388,96 +461,83 @@ def render_report(check: HealthCheck, source_name: str) -> str:
     missing_issues = [issue for issue in check.issues if issue.code == "missing_value"]
     normalized_issues = [issue for issue in check.issues if issue.code == "normalized_category"]
     coverage_issues = [issue for issue in check.issues if issue.code == "incomplete_daily_coverage"]
+    winner = check.decision.winner
+    answer = (
+        f"**{winner} appears most useful right now, tentatively.**"
+        if winner
+        else "**No single workflow is the clear usefulness leader.**"
+    )
 
     lines = [
-        "# SignalDesk Weekly Workflow Health Check",
+        "# SignalDesk Current Usefulness Brief",
         "",
-        f"Source: `{source_name}`  ",
-        f"Prompt-change comparison: baseline before {check.prompt_change_date} vs. post-change through the day before a mixed-policy incident.  ",
-        "This is descriptive monitoring, not a causal experiment.",
+        f"Source: `{source_name}`",
+        f"Current comparison window: {check.current_start} through {check.current_end}.",
+        "Decision question: Which workflow seems most useful right now?",
         "",
-        "## Can we trust this export?",
+        "## Answer",
         "",
-        f"- {len(check.records)} input rows",
-        f"- {len(normalized_issues)} inconsistent categorical value normalized",
-        f"- {len(duplicate_issues)} duplicate composite key detected",
-        f"- {len(missing_issues)} optional metric values missing; neither was imputed",
-        f"- {len(coverage_issues)} day with source coverage different from the modal pattern",
-        f"- {len(excluded)} nonproduction/invalid rows excluded from comparisons",
+        answer,
         "",
+        "The recommendation uses three primary human-facing lenses: accepted-output throughput, acceptance rate, and review burden. Directional time impact is supporting context. Model confidence, rating, and hidden weights are not used.",
+        "",
+        "## Current usefulness scorecard",
+        "",
+        "| Workflow | Source coverage | Completion | Accepted/day | Acceptance | Review rate | Est. min/completion | Est. min/day |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    for issue in check.issues:
-        if issue.code in {
-            "normalized_category",
-            "duplicate_composite_key",
-            "excluded_nonproduction",
-            "missing_value",
-            "incomplete_daily_coverage",
-        }:
-            lines.append(f"- **{issue.code}**: {issue.message}")
-
-    lines.extend(
-        [
-            "",
-            "## What happened?",
-            "",
-            "Rates are ratios of summed counts. Deltas are percentage points.",
-            "",
-            "| Workflow | Completed (base/post) | Completion delta | Acceptance delta | Review delta | Evidence |",
-            "|---|---:|---:|---:|---:|---|",
-        ]
-    )
-    for workflow in sorted(check.baseline):
-        before = check.baseline[workflow]
-        after = check.post_prompt[workflow]
+    for workflow, card in sorted(check.scorecards.items()):
+        metrics = card.metrics
         lines.append(
             "| "
             + " | ".join(
                 [
                     workflow,
-                    f"{before.completed}/{after.completed}",
-                    _pp(after.completion_rate - before.completion_rate),
-                    _pp(after.acceptance_rate - before.acceptance_rate),
-                    _pp(after.review_rate - before.review_rate),
-                    classify_evidence(before, after),
+                    _pct(card.coverage_rate),
+                    _pct(metrics.completion_rate),
+                    f"{card.accepted_per_day:.1f}",
+                    _pct(metrics.acceptance_rate),
+                    _pct(metrics.review_rate),
+                    f"{metrics.avg_minutes_saved:.1f}",
+                    f"{card.estimated_minutes_per_day:.1f}",
                 ]
             )
             + " |"
         )
 
-    lines.extend(["", "## What looks suspicious?", ""])
-    for record in check.incident_records:
-        metrics = aggregate([record])
-        lines.extend(
-            [
-                f"### NEEDS INVESTIGATION - {record.workflow} / {record.source} / {record.observed_on}",
-                "",
-                f"- Completion: {_pct(metrics.completion_rate)}",
-                f"- Acceptance among completed: {_pct(metrics.acceptance_rate)}",
-                f"- Review flags per completed: {_pct(metrics.review_rate)}",
-                f"- Estimated minutes saved per completed session: {record.avg_minutes_saved:.1f}",
-                f"- User rating: {record.user_rating:.1f}",
-                f"- Model-reported confidence: {record.median_confidence:.2f}",
-                f"- Context: {record.notes}",
-                "",
-                "Human-facing signals deteriorated while model confidence remained high. The policy changed mid-day, so this is an investigation trigger, not proof of a model or prompt regression.",
-            ]
-        )
+    lines.extend(["", "## Why this answer?", ""])
+    for lens, workflow in check.decision.lens_winners.items():
+        lines.append(f"- **{lens}:** {workflow}")
+    time_leader = max(check.scorecards, key=lambda name: check.scorecards[name].estimated_minutes_per_day)
+    lines.append(f"- **directional estimated minutes saved per day (supporting):** {time_leader}")
 
     lines.extend(
         [
             "",
-            "## Recommended next action",
+            f"{winner} leads two of the three primary decision lenses; directional time impact also supports it." if winner else "The primary decision lenses are tied.",
+            "Reply draft leads accepted-output throughput, so it could be preferred if scale is the only objective. Feedback clustering leads minutes saved per completed run, but not estimated daily impact, and its human-facing outcomes are weaker.",
             "",
-            "Pause broader **Reply draft** rollout until the August 7 policy transition is understood. Confirm the transition timestamp, then review a small stratified sample of accepted, flagged, and heavily edited outputs on each side of it. Collect at least one additional comparable week before making a prompt-performance claim.",
+            "## Data trust and exclusions",
             "",
-            "## Interpretation limits",
+            f"- {len(check.records)} input rows; {len(excluded)} rows excluded",
+            f"- {len(normalized_issues)} category normalization, {len(duplicate_issues)} duplicate key, {len(missing_issues)} missing optional values",
+            f"- {len(coverage_issues)} day with incomplete source coverage",
+            "- Both August 5 Lead summary/email rows were excluded because they describe demo traffic and its duplicate.",
+            "- August 7 was excluded because review policy changed mid-day and source coverage was incomplete.",
+            "- Lead summary has 83.3% current-window source coverage because normal August 5 email traffic is unavailable.",
             "",
-            "- Acceptance is a behavioral proxy, not correctness.",
-            "- Review flags may reflect quality, policy strictness, or careful users; overlap with acceptance is unknown.",
-            "- Estimated minutes saved are directional.",
-            "- Model confidence is diagnostic context only and never affects the evidence label.",
-            "- The short, aggregated, non-randomized dataset cannot establish causality or statistical significance.",
+            "## Assumptions and limits",
+            "",
+            "- Useful means a balance of realized adoption, accepted-output throughput, review burden, and time impact.",
+            "- Acceptance is a rough adoption/quality proxy; accepted and flagged outputs may overlap.",
+            "- Estimated minutes saved are directional and may not be comparable across tasks.",
+            "- All workflows use the same Tuesday-Thursday window, but team, task, and source mix still differ.",
+            "- Missing rows are unknown, not zero; model confidence is not a quality signal.",
+            "- Three days is too short for a definitive ROI or rollout decision.",
+            "",
+            "## Recommended next decision",
+            "",
+            "Continue **Lead summary** as the leading rollout candidate, but first recover or explain the missing August 5 production email segment and validate the minutes-saved estimate. Keep Reply draft under investigation until the August 7 policy incident is understood. Collect multiple matched weeks before treating this tentative recommendation as durable.",
             "",
         ]
     )

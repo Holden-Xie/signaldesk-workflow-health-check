@@ -1,4 +1,4 @@
-# SignalDesk Workflow Health Check
+# SignalDesk Current Usefulness Brief
 
 ## Track Chosen
 
@@ -6,11 +6,11 @@ Track A — Fictional Domain Packet.
 
 ## What I Built
 
-A standard-library Python CLI that turns SignalDesk's messy workflow export into a compact weekly health brief. It validates the schema, records normalization and exclusions, compares human-facing outcomes before and after the August 4 prompt change, and isolates the mixed-policy August 7 incident. The report supports investigation; it does not claim the prompt caused observed changes.
+A standard-library Python CLI focused on one decision: **Which workflow seems most useful right now?** It validates the messy export, selects the stable August 4–6 window, and compares workflows through three primary lenses: accepted outputs per day, acceptance rate, and review burden. Directional minutes saved is supporting context. It recommends Lead summary tentatively because it leads two lenses; Reply draft leads throughput. No opaque score is used.
 
 ## Who It Is For
 
-A SignalDesk product manager or analyst deciding what to investigate before broader rollout.
+A SignalDesk product manager choosing which workflow to prioritize for continued rollout.
 
 ## Data Or Source Used
 
@@ -27,9 +27,8 @@ python -m unittest discover -s tests -v
 
 ## Assumptions And Issues
 
-Rates use ratios of summed counts. Acceptance and review rates use completed outputs as the denominator. Missing values are not imputed; missing rows are not zeros. Team casing is normalized for analysis. Both duplicate-key August 5 Lead summary/email records are excluded because the notes identify demo traffic plus a duplicate. August 7 is separated because coverage is incomplete and review policy changed mid-day. Confidence and estimated time saved are not treated as quality ground truth.
+"Useful" means a balance of adoption, throughput, review burden, and time impact. Rates use ratios of summed counts. Missing values are not imputed and missing rows are not zeros. Both August 5 Lead summary/email records are excluded as demo traffic plus its duplicate. August 7 is excluded because policy changed mid-day. Lead summary therefore has 83.3% source coverage. Confidence and rating do not affect the recommendation; minutes saved are directional. Cross-workflow task differences and the three-day window make the answer tentative.
 
 ## Next
 
-Confirm the policy-change timestamp and audit accepted, flagged, and heavily edited Reply draft outputs on each side of it. Add prompt/policy versions, timestamps, feedback definitions, and another comparable week before making a rollout decision.
-
+Recover the missing Lead summary segment, validate minutes saved, investigate the Reply draft policy incident, and collect multiple matched weeks with explicit prompt/policy versions before making a durable rollout decision.

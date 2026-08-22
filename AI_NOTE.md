@@ -10,8 +10,8 @@ AI helped inspect every challenge file and the full dataset, identify likely dat
 
 ## One Helpful Workflow
 
-I asked AI to independently calculate pooled pre/post metrics, then required the implementation to reproduce those totals through ratio-of-sums tests. That converted an ambiguous product question into a verifiable analytical contract.
+I asked AI to calculate the current-window metrics independently, then required the implementation to reproduce the totals and expose each decision lens. That converted “most useful” from a vague ranking into a testable product judgment without a hidden score.
 
 ## What I Verified Or Decided Myself
 
-I independently chose not to present the before/after comparison as causal. I verified the source row count, known aggregate totals, duplicate exclusions, August 7 incident ratios, and missing-value behavior through executable tests. I also decided that model-reported confidence must not affect the evidence label: its mismatch with human-facing outcomes is diagnostic context, not proof of quality.
+I independently defined usefulness as adoption, accepted-output throughput, review burden, and directional time impact. I verified the source row count, current-window totals, rate denominators, duplicate exclusions, source coverage, lens winners, and incident-day separation through executable tests. I also decided that confidence and rating must not affect the recommendation.
