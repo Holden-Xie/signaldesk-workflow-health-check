@@ -8,8 +8,8 @@ jobs:
   unittest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Run unit tests
@@ -17,4 +17,4 @@ jobs:
       - name: Verify checked-in report is reproducible
         run: |
           python signaldesk_health.py --output /tmp/REPORT.md >/dev/null
-          diff -u REPORT.md /tmp/REPORT.md
+          diff --strip-trailing-cr -u REPORT.md /tmp/REPORT.md
