@@ -33,8 +33,10 @@ python -m unittest discover -s tests -v
 
 ## Assumptions And Issues
 
-"Useful" means a balance of adoption, throughput, review burden, and time impact. Rates use ratios of summed counts. Missing values are not imputed and missing rows are not zeros. Both August 5 Lead summary/email records are excluded as demo traffic plus its duplicate. August 7 is excluded because policy changed mid-day. Lead summary therefore has 83.3% source coverage. Confidence and rating do not affect the recommendation; minutes saved are directional. Cross-workflow task differences and the three-day window make the answer tentative.
+"Useful" means a balance of adoption, throughput, review burden, and time impact. Rates use ratios of summed counts. Missing values are not imputed and missing rows are not zeros. Both August 5 Lead summary/email records are excluded as demo traffic plus its duplicate. August 7 is excluded because policy changed mid-day. Lead summary therefore has 83.3% source coverage. Confidence and rating do not affect the recommendation; minutes saved are directional.
+
+The comparison uses the shared Tuesday-Thursday window (August 4-6) so weekday composition is aligned across workflows, but the dataset is too small to estimate or remove a weekday effect. Day of week could still confound the result if workflows are used differently on Tuesdays, Wednesdays, and Thursdays. Other important confounders are task mix, source mix, team/user mix, workflow maturity, and the mid-period policy change. Because the data are daily aggregates rather than randomized user-level observations, the result is descriptive and tentative, not evidence that one workflow caused better outcomes.
 
 ## Next
 
-Recover the missing Lead summary segment, validate minutes saved, investigate the Reply draft policy incident, and collect multiple matched weeks with explicit prompt/policy versions before making a durable rollout decision.
+Recover the missing Lead summary segment, validate minutes saved, investigate the Reply draft policy incident, and collect multiple matched weeks with weekday, task, source, team, and prompt/policy-version fields. Use those repeated matched observations to check weekday and mix effects before making a durable rollout decision.
